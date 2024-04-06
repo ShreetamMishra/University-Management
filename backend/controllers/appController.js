@@ -263,3 +263,187 @@ export async function deleteFaculty(req, res) {
         return res.status(500).send({ error: "An error occurred while deleting faculty." });
     }
 }
+
+export async function signup(req, res) {
+    const { role, name, email, collegename, id, registrationNumber, password } = req.body;
+    
+    try {
+        let newUser;
+        switch(role) {
+            case 'student':
+                newUser = new UserModel({
+                    name,
+                    role,
+                    email,
+                    collegename,
+                    registrationNumber,
+                    password: await bcrypt.hash(password, 10)
+                });
+                break;
+                case 'staff':
+                    // Check if staff details exist in staffmodels
+                    const existingStaff = await StaffModel.findOne({ email, collegename, id });
+    
+                    if (!existingStaff) {
+                        return res.status(403).send({ error: "Staff details not found. Permission denied." });
+                    }
+    
+                    newUser = new UserModel({
+                        name,
+                        email,
+                        role,
+                        collegename,
+                        id,
+                        password: await bcrypt.hash(password, 10)
+                    });
+                    break;
+            case 'faculty':
+                // Implement similar validation as staff for faculty registration
+                const existingFaculty = await Facultymodel.findOne({ email, collegename, id });
+
+                if (!existingFaculty) {
+                    return res.status(403).send({ error: "Faculty details not found. Permission denied." });
+                }
+
+                newUser = new UserModel({
+                    name,
+                    email,
+                    role,
+                    collegename,
+                    id,
+                    password: await bcrypt.hash(password, 10)
+                });
+                break;
+            default:
+                return res.status(400).send({ error: "Invalid role specified." });
+        }
+
+        // const savedUser = await newUser.save();
+        
+        // Generate OTP
+        const otp = await createOTP(req);
+        
+        // Send OTP email
+        await sendOTPEmail(name, email, otp);
+
+        return res.status(201).send({ message: "Please verify your email with OTP." });
+    } catch (error) {
+        console.error("Error during signup:", error);
+        return res.status(500).send({ error: "An error occurred during signup." });
+    }
+}
+export async function validateOTPAndRegister(req, res) {
+    try {
+        const { role, name, email, password, collegename, id, registrationNumber, enteredOTP } = req.body;
+
+        // Retrieve stored OTP based on the request or app locals
+        const storedOTP = req.app.locals.OTP;
+
+        if (!(storedOTP && enteredOTP === storedOTP)) {
+            return res.status(400).send({ error: 'Invalid OTP. Registration failed.' });
+        }
+
+        let newUser;
+        switch(role) {
+            case 'student':
+                newUser = new UserModel({
+                    name,
+                    role,
+                    email,
+                    collegename,
+                    registrationNumber,
+                    password: await bcrypt.hash(password, 10)
+                });
+                break;
+            case 'staff':
+                newUser = new UserModel({
+                    name,
+                    email,
+                    role,
+                    collegename,
+                    id,
+                    password: await bcrypt.hash(password, 10)
+                });
+                break;
+            case 'faculty':
+                newUser = new UserModel({
+                    name,
+                    email,
+                    collegename,
+                    role,
+                    id,
+                    password: await bcrypt.hash(password, 10)
+                });
+                break;
+            default:
+                return res.status(400).send({ error: "Invalid role specified." });
+        }
+
+        try {
+            // Check if a user with the provided email exists
+            const existingUser = await UserModel.findOne({ email });
+
+            if (existingUser) {
+                return res.status(400).send({ error: 'User already exists' });
+            }
+
+            // Save the user in the database
+            await newUser.save();
+
+            // Reset the stored OTP after successful registration
+            req.app.locals.OTP = null;
+
+            return res.status(201).send({ msg: 'User Registered Successfully' });
+        } catch (error) {
+            console.error('Error creating user:', error);
+            return res.status(500).send({ error: 'Error creating user' });
+        }
+    } catch (error) {
+        console.error('Internal server error:', error);
+        return res.status(500).send({ error: 'Internal server error' });
+    }
+}
+// Function to create OTP
+export async function createOTP(req) {
+    try {
+        if (req && req.app && req.app.locals) {
+            const OTP = await otpGenerator.generate(6, { lowerCaseAlphabets: false, upperCaseAlphabets: false, specialChars: false });
+            req.app.locals.OTP = OTP; // Store OTP in app locals
+            return OTP; // Return OTP
+        } else {
+            throw new Error('Invalid request object.');
+        }
+    } catch (error) {
+        console.error('Error generating OTP:', error);
+        throw new Error('Failed to generate OTP.');
+    }
+}
+
+// Function to send OTP email
+export async function sendOTPEmail(name, email, otp) {
+    try {
+        // Create nodemailer transporter (use your email service provider's settings)
+        let transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: 'shreetammishra01@gmail.com',
+                pass: 'rsfghymlzapvfbyh'
+            }
+        });
+
+        // Construct email message
+        let mailOptions = {
+            from: 'shreetammishra01@gmail.com',
+            to: email,
+            subject: 'Verification OTP for Registration',
+            text: `Hello ${name}, Your OTP is: ${otp}`
+        };
+
+        // Send email
+        let info = await transporter.sendMail(mailOptions);
+        console.log('Email sent:', info.response);
+    } catch (error) {
+        console.error('Error sending OTP email:', error);
+        throw new Error('Failed to send OTP email.');
+    }
+}

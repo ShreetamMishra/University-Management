@@ -33,6 +33,13 @@ router.route('/faculty/:id')
     .get(controller.getFacultyById) // Get faculty member by ID
     .put(controller.updateFaculty) // Update faculty member by ID
     .delete(controller.deleteFaculty); // Delete faculty member by ID
+ router.post('/signup', controller.signup);
+
+// Generate OTP route
+router.post('/generate-otp', controller.createOTP);
+router.route('/validate-otp-and-register').post(controller.validateOTPAndRegister);
+// Send mail route
+router.post('/send-mail', controller.sendOTPEmail);
 // GET Methods
 // router.route('/user/:username').get(controller.getUser);
 // router.route('/generateOTP').get(controller.verifyUser, localVariables, controller.generateOTP);
